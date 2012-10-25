@@ -23,6 +23,8 @@ use PDO;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\PersistentCollection;
 use Doctrine\ORM\Query;
+use Doctrine\ORM\Events;
+use Doctrine\ORM\Event\LifecycleEventArgs;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ORM\Proxy\Proxy;
 
@@ -80,6 +82,10 @@ class ObjectHydrator extends AbstractHydrator
      */
     private $existingCollections = array();
 
+    /**
+     * @var array
+     */
+    private $hydratedObjects = array();
 
      /**
      * {@inheritdoc}
@@ -88,6 +94,7 @@ class ObjectHydrator extends AbstractHydrator
     {
         $this->identifierMap =
         $this->resultPointers =
+        $this->hydratedObjects =
         $this->idTemplate = array();
 
         $this->resultCounter = 0;
@@ -157,6 +164,7 @@ class ObjectHydrator extends AbstractHydrator
         $this->identifierMap =
         $this->initializedCollections =
         $this->existingCollections =
+        $this->hydratedObjects =
         $this->resultPointers = array();
 
         if ($eagerLoad) {
@@ -179,6 +187,26 @@ class ObjectHydrator extends AbstractHydrator
         // Take snapshots from all newly initialized collections
         foreach ($this->initializedCollections as $coll) {
             $coll->takeSnapshot();
+        }
+
+        $evm = $this->_em->getEventManager();
+        $hasListeners = $evm->hasListeners(Events::postLoad);
+        foreach ($this->hydratedObjects as $class => $entities) {
+            $meta = $this->getClassMetadata($class);
+            $hasLifecycleCallback = isset($meta->lifecycleCallbacks[Events::postLoad]);
+            if ($hasLifecycleCallback || $hasListeners) {
+                foreach ($entities as $entity) {
+                    if (($entity instanceof Proxy) && !($entity->__isInitialized__)) {
+                        continue;
+                    }
+                    if ($hasLifecycleCallback) {
+                        $meta->invokeLifecycleCallbacks(Events::postLoad, $entity);
+                    }
+                    if ($hasListeners) {
+                        $evm->dispatchEvent(Events::postLoad, new LifecycleEventArgs($entity, $this->_em));
+                    }
+                }
+            }
         }
 
         return $result;
@@ -269,7 +297,20 @@ class ObjectHydrator extends AbstractHydrator
 
         $this->_hints['fetchAlias'] = $dqlAlias;
 
-        return $this->_uow->createEntity($className, $data, $this->_hints);
+        if (($entity = $this->getEntityFromIdentityMap($className, $data)) && (!($entity instanceof Proxy) || $entity->__isInitialized__))
+        {
+            if (!isset($this->_hints[Query::HINT_REFRESH]) &&
+                ((!isset($this->_hints[Query::HINT_REFRESH_ENTITY]) || ($this->_hints[Query::HINT_REFRESH_ENTITY] !== $entity))))
+                return $entity;
+        }
+
+        $entity = $this->_uow->createEntity($className, $data, $this->_hints);
+        if (!isset($this->hydratedObjects[$className])) {
+            $this->hydratedObjects[$className] = array();
+        }
+        $this->hydratedObjects[$className][] = $entity;
+
+        return $entity;
     }
 
     /**
@@ -280,7 +321,7 @@ class ObjectHydrator extends AbstractHydrator
     private function getEntityFromIdentityMap($className, array $data)
     {
         // TODO: Abstract this code and UnitOfWork::createEntity() equivalent?
-        $class = $this->ce[$className];
+        $class = $this->getClassMetadata($className);
 
         /* @var $class ClassMetadata */
         if ($class->isIdentifierComposite) {
@@ -514,7 +555,7 @@ class ObjectHydrator extends AbstractHydrator
                 // check for existing result from the iterations before
                 if ( ! isset($this->identifierMap[$dqlAlias][$id[$dqlAlias]])) {
                     $element = $this->getEntity($rowData[$dqlAlias], $dqlAlias);
-   
+
                     if ($this->_rsm->isMixed) {
                         $element = array($entityKey => $element);
                     }
@@ -586,7 +627,7 @@ class ObjectHydrator extends AbstractHydrator
 
                 if ($count === 1) {
                     $result[$resultKey] = $obj;
-                    
+
                     continue;
                 }
 

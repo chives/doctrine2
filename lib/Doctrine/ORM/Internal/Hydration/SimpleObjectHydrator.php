@@ -39,6 +39,11 @@ class SimpleObjectHydrator extends AbstractHydrator
     private $declaringClasses = array();
 
     /**
+     * @var array
+     */
+    private $hydratedObjects = array();
+
+    /**
      * {@inheritdoc}
      */
     protected function hydrateAllData()
@@ -52,6 +57,26 @@ class SimpleObjectHydrator extends AbstractHydrator
 
         $this->_em->getUnitOfWork()->triggerEagerLoads();
 
+        $evm = $this->_em->getEventManager();
+        $hasListeners = $evm->hasListeners(Events::postLoad);
+        foreach ($this->hydratedObjects as $class => $entities) {
+            $meta = $this->_em->getClassMetadata($class);
+            $hasLifecycleCallback = isset($meta->lifecycleCallbacks[Events::postLoad]);
+            if ($hasLifecycleCallback || $hasListeners) {
+                foreach ($entities as $entity) {
+                    if (($entity instanceof Proxy) && !($entity->__isInitialized__)) {
+                        continue;
+                    }
+                    if ($hasLifecycleCallback) {
+                        $meta->invokeLifecycleCallbacks(Events::postLoad, $entity);
+                    }
+                    if ($hasListeners) {
+                        $evm->dispatchEvent(Events::postLoad, new LifecycleEventArgs($entity, $this->_em));
+                    }
+                }
+            }
+        }
+
         return $result;
     }
 
@@ -60,6 +85,8 @@ class SimpleObjectHydrator extends AbstractHydrator
      */
     protected function prepare()
     {
+        $this->hydratedObjects = array();
+
         if (count($this->_rsm->aliasMap) !== 1) {
             throw new \RuntimeException("Cannot use SimpleObjectHydrator with a ResultSetMapping that contains more than one object result.");
         }
@@ -78,6 +105,16 @@ class SimpleObjectHydrator extends AbstractHydrator
         foreach ($this->_rsm->declaringClasses as $column => $class) {
             $this->declaringClasses[$column] = $this->_em->getClassMetadata($class);
         }
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function cleanup()
+    {
+        parent::cleanup();
+
+        $this->hydratedObjects = array();
     }
 
     /**
@@ -133,6 +170,10 @@ class SimpleObjectHydrator extends AbstractHydrator
 
         $uow    = $this->_em->getUnitOfWork();
         $entity = $uow->createEntity($entityName, $data, $this->_hints);
+        if (!isset($this->hydratedObjects[$entityName])) {
+            $this->hydratedObjects[$entityName] = array();
+        }
+        $this->hydratedObjects[$entityName][] = $entity;
 
         $result[] = $entity;
     }
