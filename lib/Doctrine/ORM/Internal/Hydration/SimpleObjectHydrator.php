@@ -57,22 +57,28 @@ class SimpleObjectHydrator extends AbstractHydrator
 
         $this->_em->getUnitOfWork()->triggerEagerLoads();
 
-        $evm = $this->_em->getEventManager();
+        $evm          = $this->_em->getEventManager();
         $hasListeners = $evm->hasListeners(Events::postLoad);
+
         foreach ($this->hydratedObjects as $class => $entities) {
-            $meta = $this->_em->getClassMetadata($class);
+            $meta                 = $this->_em->getClassMetadata($class);
             $hasLifecycleCallback = isset($meta->lifecycleCallbacks[Events::postLoad]);
-            if ($hasLifecycleCallback || $hasListeners) {
-                foreach ($entities as $entity) {
-                    if (($entity instanceof Proxy) && !($entity->__isInitialized__)) {
-                        continue;
-                    }
-                    if ($hasLifecycleCallback) {
-                        $meta->invokeLifecycleCallbacks(Events::postLoad, $entity);
-                    }
-                    if ($hasListeners) {
-                        $evm->dispatchEvent(Events::postLoad, new LifecycleEventArgs($entity, $this->_em));
-                    }
+
+            if ( ! $hasLifecycleCallback && ! $hasListeners) {
+                continue;
+            }
+
+            foreach ($entities as $entity) {
+                if (($entity instanceof Proxy) && ! ($entity->__isInitialized__)) {
+                    continue;
+                }
+
+                if ($hasLifecycleCallback) {
+                    $meta->invokeLifecycleCallbacks(Events::postLoad, $entity);
+                }
+
+                if ($hasListeners) {
+                    $evm->dispatchEvent(Events::postLoad, new LifecycleEventArgs($entity, $this->_em));
                 }
             }
         }
