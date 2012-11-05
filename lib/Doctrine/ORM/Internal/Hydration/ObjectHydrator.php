@@ -189,22 +189,28 @@ class ObjectHydrator extends AbstractHydrator
             $coll->takeSnapshot();
         }
 
-        $evm = $this->_em->getEventManager();
+        $evm          = $this->_em->getEventManager();
         $hasListeners = $evm->hasListeners(Events::postLoad);
+
         foreach ($this->hydratedObjects as $class => $entities) {
-            $meta = $this->getClassMetadata($class);
+            $meta                 = $this->getClassMetadata($class);
             $hasLifecycleCallback = isset($meta->lifecycleCallbacks[Events::postLoad]);
-            if ($hasLifecycleCallback || $hasListeners) {
-                foreach ($entities as $entity) {
-                    if (($entity instanceof Proxy) && !($entity->__isInitialized__)) {
-                        continue;
-                    }
-                    if ($hasLifecycleCallback) {
-                        $meta->invokeLifecycleCallbacks(Events::postLoad, $entity);
-                    }
-                    if ($hasListeners) {
-                        $evm->dispatchEvent(Events::postLoad, new LifecycleEventArgs($entity, $this->_em));
-                    }
+
+            if ( ! $hasLifecycleCallback && ! $hasListeners) {
+                continue;
+            }
+
+            foreach ($entities as $entity) {
+                if (($entity instanceof Proxy) && ! ($entity->__isInitialized__)) {
+                    continue;
+                }
+
+                if ($hasLifecycleCallback) {
+                    $meta->invokeLifecycleCallbacks(Events::postLoad, $entity);
+                }
+
+                if ($hasListeners) {
+                    $evm->dispatchEvent(Events::postLoad, new LifecycleEventArgs($entity, $this->_em));
                 }
             }
         }
@@ -297,17 +303,18 @@ class ObjectHydrator extends AbstractHydrator
 
         $this->_hints['fetchAlias'] = $dqlAlias;
 
-        if (($entity = $this->getEntityFromIdentityMap($className, $data)) && (!($entity instanceof Proxy) || $entity->__isInitialized__))
-        {
-            if (!isset($this->_hints[Query::HINT_REFRESH]) &&
-                ((!isset($this->_hints[Query::HINT_REFRESH_ENTITY]) || ($this->_hints[Query::HINT_REFRESH_ENTITY] !== $entity))))
+        if (($entity = $this->getEntityFromIdentityMap($className, $data)) && ( ! ($entity instanceof Proxy) || $entity->__isInitialized__)) {
+            if ( ! isset($this->_hints[Query::HINT_REFRESH]) &&
+                (( ! isset($this->_hints[Query::HINT_REFRESH_ENTITY]) || ($this->_hints[Query::HINT_REFRESH_ENTITY] !== $entity))))
                 return $entity;
         }
 
         $entity = $this->_uow->createEntity($className, $data, $this->_hints);
+
         if (!isset($this->hydratedObjects[$className])) {
             $this->hydratedObjects[$className] = array();
         }
+
         $this->hydratedObjects[$className][] = $entity;
 
         return $entity;
