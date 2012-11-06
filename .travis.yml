@@ -17,4 +17,4 @@ before_script:
   - sh -c "if [ '$DB' = 'mysql' ]; then mysql -e 'create database IF NOT EXISTS doctrine_tests_tmp;create database IF NOT EXISTS doctrine_tests;'; fi"
   - git submodule update --init
 
-script: cat debug.gdb | sudo gdb --args /home/travis/.phpenv/versions/5.4.8/bin/php /home/travis/.phpenv/versions/5.4.8/bin/phpunit --confugiration tests/travis/$DB.travis.xml
+script: cat debug.gdb | sudo gdb --args /home/travis/.phpenv/versions/5.4.8/bin/php /home/travis/.phpenv/versions/5.4.8/bin/phpunit --configuration tests/travis/$DB.travis.xml
