@@ -328,7 +328,7 @@ class ObjectHydrator extends AbstractHydrator
     private function getEntityFromIdentityMap($className, array $data)
     {
         // TODO: Abstract this code and UnitOfWork::createEntity() equivalent?
-        $class = $this->getClassMetadata($className);
+        $class = $this->ce[$className];
 
         /* @var $class ClassMetadata */
         if ($class->isIdentifierComposite) {
